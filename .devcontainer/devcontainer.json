@@ -1,0 +1,13 @@
+{
+  "name": "AWS Terraform",
+  "image": "devcontainer/terraform-aws:1.7.4",
+  "postStartCommand": "/home/devcontainer/post-start.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "hashicorp.terraform",
+        "AquaSecurityOfficial.trivy-vulnerability-scanner"
+      ]
+    }
+  }
+}

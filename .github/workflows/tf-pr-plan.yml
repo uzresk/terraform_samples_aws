@@ -1,0 +1,145 @@
+name: Terraform PullRequest Plan
+run-name: terraform plan by @${{ github.actor }}
+
+on:
+  issue_comment: 
+      types: [created]
+
+env:
+  TF_VERSION: 1.5.4
+  TFLINT_VERSION: 0.50.3
+  ARM_CLIENT_ID: "${{ secrets.ARM_CLIENT_ID }}"
+  ARM_SUBSCRIPTION_ID: "${{ secrets.ARM_SUBSCRIPTION_ID }}"
+  ARM_TENANT_ID: "${{ secrets.ARM_TENANT_ID }}"
+  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+
+jobs:
+  terraform_plan:
+    name: Terraform Plan
+    if: github.event_name == 'issue_comment' && contains(github.event.comment.body, 'terraform plan')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    steps:
+
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: terraform plan xxxxのxxxxの部分からplanを実行するディレクトリを取得する
+        id: get-workdir-from-comment
+        run: |
+          COMMENT_BODY="${{ github.event.comment.body }}"
+          PATTERN="^terraform plan (.+)$"
+          if [[ $COMMENT_BODY =~ $PATTERN ]]; then
+            workdir="${BASH_REMATCH[1]}" 
+            echo "workdir: $workdir"
+            echo "WORKDIR=$workdir" >> $GITHUB_ENV
+            if [ ! -d $workdir ]; then
+              echo "::error::Directory does not exist."
+              echo "workdir_exists=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: 指定されたディレクトリが不正だったらエラー
+        if: steps.get-workdir-from-comment.outputs.workdir_exists == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: 'Failed: 不正なディレクトリが指定されています。'
+            });
+            process.exit(1);
+
+      - name: 変更されたディレクトリの一覧からplanを実行するディレクトリを取得する
+        id: get-workdir-from-diff
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const response = await github.rest.pulls.listFiles({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number
+            });
+            const diffFiles = response.data.map(file => file.filename);
+            console.log("diff_files:", diffFiles.join("\n"));
+
+            // ファイルパスからディレクトリの部分を取り出し、重複を排除
+            const diffDirs = [...new Set(diffFiles.map(file => {
+              // ファイルパスを'/'で分割してディレクトリ部分だけを取得（最後の要素はファイル名なので除外）
+              const parts = file.split('/');
+              parts.pop(); // ファイル名を取り除く
+              return parts.join('/'); // ディレクトリパスを再構成
+            }).filter(Boolean))]; // 空のエントリを排除
+
+            console.log("diff_dirs:", diffDirs.join("\n"));
+
+            if (diffDirs.length > 1) {
+              console.log("Diff Directory が複数あります");
+              core.setOutput("too_many_workdirs", "true");
+            }
+            workdir = diffDirs[0]
+            console.log("workdir:", workdir)
+            core.exportVariable("WORKDIR", workdir)
+
+      - name: 複数のTerraformディレクトリがプルリクエスト内に入っていたらエラーとする
+        if: steps.get-workdir-from-diff.outputs.too_many_workdirs == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: 'Failed: プルリクエストに複数のTerraformディレクトリが存在します。'
+            });
+            process.exit(1);
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ${{ env.WORKDIR }} 
+        run: terraform init -no-color
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ env.WORKDIR }} 
+        run: |
+          echo "plan_output_path=$(pwd)/plan_output.txt" >> "$GITHUB_OUTPUT"
+          terraform plan -no-color > plan_output.txt 2>&1
+
+      - name: Planの結果をPullRequestのコメントに書き込む
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('${{ steps.plan.outputs.plan_output_path }}', 'utf8');
+            const commentBody = `
+            Ran Plan for dir: \`${{ env.WORKDIR }}\`
+            <details>
+
+            <summary>Show Output</summary>
+
+            \`\`\`
+            ${planOutput}
+            \`\`\`
+
+            </details>
+
+            To apply this plan, comment: \`terraform apply ${{ env.WORKDIR }}\`
+            To plan this project again, comment: \`terraform plan ${{ env.WORKDIR }}\`
+            `;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            });
