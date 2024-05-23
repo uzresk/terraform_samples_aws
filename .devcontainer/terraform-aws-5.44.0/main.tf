@@ -1,6 +1,6 @@
 terraform {
   backend "local" {}
-  required_version = "1.5.4"
+  required_version = "1.7.4"
   required_providers {
     external = {
       source  = "hashicorp/external"

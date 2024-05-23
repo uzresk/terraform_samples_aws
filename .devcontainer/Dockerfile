@@ -1,6 +1,5 @@
 #trivy:ignore:AVD-DS-0026
 FROM ubuntu:22.04
-WORKDIR /root
 
 ARG USERNAME=devcontainer
 ARG USER_UID=1000
@@ -51,18 +50,16 @@ RUN cd /usr/local/bin \
     && rm trivy_Linux-64bit.tar.gz
 
 # tflintの設定をルートディレクトリにコピー
-COPY tflint/.tflint.hcl /root/
-WORKDIR /
-RUN tflint --init
+COPY tflint/.tflint.hcl /home/devcontainer/
+RUN cd /home/devcontainer && tflint --init
 
 # provider aws 5.44.0をローカルにmirrorする
-RUN rm -rf /root/terraform && mkdir /providers
-COPY terraform-aws-5.44.0/main.tf /root/terraform/
-WORKDIR /terraform
-RUN terraform providers mirror /providers
+RUN rm -rf /home/devcontainer/terraform && mkdir /home/devcontainer/terraform
+COPY terraform-aws-5.44.0/main.tf /home/devcontainer/terraform/
+RUN cd /home/devcontainer/terraform && terraform providers mirror /providers
 
 # providerのダウンロード先をローカルファイルシステムに変更する
-COPY terraformrc/.terraformrc /root/
+COPY terraformrc/.terraformrc /home/devcontainer/
 
 # install aws cli
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
