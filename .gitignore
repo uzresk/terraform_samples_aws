@@ -34,8 +34,9 @@ override.tf.json
 # example: *tfplan*
 
 # Ignore CLI configuration files
-.terraformrc
-terraform.rc
+# Dockerfileで利用しているので.terraformrcをコミットする
+# .terraformrc
+# terraform.rc
 
 # junit report
 *.xml
