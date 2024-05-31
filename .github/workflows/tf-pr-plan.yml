@@ -8,10 +8,7 @@ on:
 env:
   TF_VERSION: 1.5.4
   TFLINT_VERSION: 0.50.3
-  ARM_CLIENT_ID: "${{ secrets.ARM_CLIENT_ID }}"
-  ARM_SUBSCRIPTION_ID: "${{ secrets.ARM_SUBSCRIPTION_ID }}"
-  ARM_TENANT_ID: "${{ secrets.ARM_TENANT_ID }}"
-  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+  # aws backendの設定を適宜いれること
 
 jobs:
   terraform_plan:
@@ -76,13 +73,16 @@ jobs:
               return parts.join('/'); // ディレクトリパスを再構成
             }).filter(Boolean))]; // 空のエントリを排除
 
-            console.log("diff_dirs:", diffDirs.join("\n"));
+            // .devcontainerディレクトリを除外
+            const filteredDiffDirs = diffDirs.filter(dir => !dir.includes('.devcontainer'))
 
-            if (diffDirs.length > 1) {
+            console.log("diff_dirs:", filteredDiffDirs.join("\n"));
+
+            if (filteredDiffDirs.length > 1) {
               console.log("Diff Directory が複数あります");
               core.setOutput("too_many_workdirs", "true");
             }
-            workdir = diffDirs[0]
+            workdir = filteredDiffDirs[0]
             console.log("workdir:", workdir)
             core.exportVariable("WORKDIR", workdir)
 
