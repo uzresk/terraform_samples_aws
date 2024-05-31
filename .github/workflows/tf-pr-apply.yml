@@ -116,10 +116,28 @@ jobs:
             repo: context.repo.repo,
             pull_number: context.issue.number
              });
-            const RequestChanges = reviews.some(review => review.state === 'CHANGES_REQUESTED');
-            const Approved = !RequestChanges && reviews.some(review => review.state === 'APPROVED');
 
-            core.setOutput('approved', Approved);
+            // レビューをレビュアーごとにグループ化
+            const reviewsByReviewer = reviews.reduce((acc, review) => {
+                if (!acc[review.user.login]) {
+                    acc[review.user.login] = [];
+                }
+                acc[review.user.login].push(review);
+                return acc;
+            }, {});
+
+            // 最新のステータスが取得できるようにソートする
+            for (const reviewer in reviewsByReviewer) {
+                reviewsByReviewer[reviewer].sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
+            }
+
+            // APPROVEDが一人以上存在する＆CHANGES_REQUESTEDが存在しない場合、承認済み判定
+            const noChangesRequested = Object.values(reviewsByReviewer).every(reviews => reviews[0].state !== 'CHANGES_REQUESTED');
+            const atLeastOneApproved = Object.values(reviewsByReviewer).some(reviews => reviews[0].state === 'APPROVED');
+
+            const approved = noChangesRequested && atLeastOneApproved;
+
+            core.setOutput('approved', approved);
 
       - name: PullRequestが承認されていなかったらコメントに記載し終了
         if: steps.check-pr-status.outputs.approved == 'false'
